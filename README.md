@@ -6,6 +6,9 @@ Lunaria is a Live2D-based desktop character project designed to connect OpenClaw
 
 The project is still under active development, but it already provides a working baseline for model loading, chat, SSE events, motion / expression directives, and TTS integration.
 
+![window](./docs/screenshots/window.png)
+![pet](./docs/screenshots/pet.png)
+
 ### Overview
 
 - Live2D model loading and rendering
