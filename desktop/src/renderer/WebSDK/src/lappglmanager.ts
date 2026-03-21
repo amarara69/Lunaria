@@ -8,8 +8,8 @@
 export let canvas: HTMLCanvasElement | null = null;
 export let gl: WebGLRenderingContext | null = null;
 export let s_instance: LAppGlManager | null = null;
-import { resolveActiveLive2DCanvas } from "../../src/runtime/live2d-canvas-binding-utils.mjs";
-import { resolveLive2DGlContext } from "../../src/runtime/live2d-gl-context-utils.mjs";
+import { resolveActiveLive2DCanvas } from "../../src/runtime/live2d-canvas-binding-utils.ts";
+import { resolveLive2DGlContext } from "../../src/runtime/live2d-gl-context-utils.ts";
 /**
  * Cubism SDKのサンプルで使用するWebGLを管理するクラス
  */

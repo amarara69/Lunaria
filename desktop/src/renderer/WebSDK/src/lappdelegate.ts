@@ -13,9 +13,9 @@ import { LAppPal } from './lapppal';
 import { LAppTextureManager } from './lapptexturemanager';
 import { LAppView } from './lappview';
 import { canvas, gl } from './lappglmanager';
-import { releaseIfPresent } from '../../src/runtime/live2d-disposal-utils.mjs';
-import { canInitializeLive2DDelegate } from '../../src/runtime/live2d-gl-context-utils.mjs';
-import { shouldRenderLive2DFrame } from '../../src/runtime/live2d-render-loop-utils.mjs';
+import { releaseIfPresent } from '../../src/runtime/live2d-disposal-utils.ts';
+import { canInitializeLive2DDelegate } from '../../src/runtime/live2d-gl-context-utils.ts';
+import { shouldRenderLive2DFrame } from '../../src/runtime/live2d-render-loop-utils.ts';
 
 export let s_instance: LAppDelegate | null = null;
 export let frameBuffer: WebGLFramebuffer | null = null;

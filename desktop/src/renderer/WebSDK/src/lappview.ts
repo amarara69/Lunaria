@@ -20,7 +20,7 @@ import { TouchManager } from "./touchmanager";
 import {
   deleteGlProgramIfPresent,
   releaseIfPresent,
-} from "../../src/runtime/live2d-disposal-utils.mjs";
+} from "../../src/runtime/live2d-disposal-utils.ts";
 
 /**
  * 描画クラス。

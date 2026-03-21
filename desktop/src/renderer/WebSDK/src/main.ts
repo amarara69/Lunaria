@@ -15,8 +15,8 @@ import {
   beginLive2DInitializationSession,
   getLive2DInitializationStore,
   isLive2DInitializationSessionCurrent,
-} from "../../src/runtime/live2d-init-session-utils.mjs";
-import { resetLive2DRuntime } from "../../src/runtime/live2d-runtime-reset-utils.mjs";
+} from "../../src/runtime/live2d-init-session-utils.ts";
+import { resetLive2DRuntime } from "../../src/runtime/live2d-runtime-reset-utils.ts";
 
 /**
  * Initialize the Live2D application

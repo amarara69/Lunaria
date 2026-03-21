@@ -47,12 +47,12 @@ import { CubismMoc } from "@framework/model/cubismmoc";
 import {
   applyFailedMotionPreload,
   applySuccessfulMotionPreload,
-} from "../../src/runtime/live2d-motion-preload-utils.mjs";
+} from "../../src/runtime/live2d-motion-preload-utils.ts";
 import {
   getActiveLive2DInitializationSession,
   getLive2DInitializationStore,
   shouldContinueLive2DAssetLoad,
-} from "../../src/runtime/live2d-init-session-utils.mjs";
+} from "../../src/runtime/live2d-init-session-utils.ts";
 
 enum LoadStep {
   LoadAssets,
