@@ -10,7 +10,7 @@ from pathlib import Path
 from fastapi.responses import StreamingResponse
 
 from ..app_context import AppContext
-from ..services.tts_service import TtsRequest
+from ..services.tts_service import TtsRequest, extract_tts_overrides
 from ..utils import strip_stage_directives
 from ..web.helpers import build_route_key, require_existing_session
 from ..web.sse import format_sse
@@ -357,6 +357,7 @@ class ChatStreamingService:
         min_segment_chars = int(chat_tts_cfg.get("minSegmentChars") or 1)
         want_tts = bool(body.get("ttsEnabled", True))
         tts_provider_override = str(body.get("ttsProvider") or "").strip() or None
+        tts_overrides = extract_tts_overrides(body)
         tts_unit_q: asyncio.Queue[dict] = asyncio.Queue(maxsize=200)
         tts_sse_q: asyncio.Queue[str] = asyncio.Queue(maxsize=200)
         tts_worker_task: asyncio.Task | None = None
@@ -410,7 +411,7 @@ class ChatStreamingService:
                             text=text,
                             mode="chat",
                             provider_override=tts_provider_override,
-                            overrides={"mode": "chat", "provider": tts_provider_override or ""},
+                            overrides=tts_overrides,
                         )
                     )
                     ext = _safe_audio_extension(content_type)

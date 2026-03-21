@@ -45,6 +45,8 @@ export interface LunariaModelSummary {
 export interface LunariaTtsProvider {
   id: string;
   name: string;
+  fields: LunariaProviderField[];
+  editableFields: string[];
 }
 
 export interface LunariaManifest {

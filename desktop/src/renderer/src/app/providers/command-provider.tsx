@@ -428,6 +428,12 @@ export function RendererCommandProvider({
     useAppStore.getState().appendAutomationLog("已停止自动化音乐");
   }, []);
 
+  const getCurrentTtsOverrides = useCallback(() => {
+    const state = useAppStore.getState();
+    const ttsProviderConfig = state.manifest?.model.chat.tts.providers.find((item) => item.id === state.ttsProvider) || null;
+    return getProviderOverridesPayload(ttsProviderConfig, state.providerFieldValues, { nestKey: "ttsOverrides" });
+  }, []);
+
   const enqueueSpeech = useCallback((payload: {
     text?: string;
     audioUrl?: string;
@@ -448,10 +454,12 @@ export function RendererCommandProvider({
         let shouldRevoke = false;
 
         if (!targetUrl && payload.text && useAppStore.getState().ttsEnabled) {
+          const state = useAppStore.getState();
           const blob = await requestTts(normalizedBackendUrl, {
             text: payload.text,
-            provider: useAppStore.getState().ttsProvider,
+            provider: state.ttsProvider,
             mode: payload.mode || "chat",
+            ...getCurrentTtsOverrides(),
           });
           if (!isPlaybackVersionCurrent(queueVersion, playbackVersionRef.current)) {
             return;
@@ -531,7 +539,7 @@ export function RendererCommandProvider({
       .catch((error) => {
         console.warn("Speech queue failed:", error);
       });
-  }, [normalizedBackendUrl, stopCurrentAudio]);
+  }, [getCurrentTtsOverrides, normalizedBackendUrl, stopCurrentAudio]);
 
   const appendLocalAssistantMessage = useCallback((
     text: string,
@@ -643,6 +651,7 @@ export function RendererCommandProvider({
           assistantMeta: payload.assistantMeta,
           messageSource: payload.messageSource || "chat",
           ...getProviderOverridesPayload(provider, state.providerFieldValues),
+          ...getCurrentTtsOverrides(),
         },
         {
           signal: abortController.signal,
@@ -736,7 +745,7 @@ export function RendererCommandProvider({
     } finally {
       currentAbortRef.current = null;
     }
-  }, [enqueueSpeech, normalizedBackendUrl, playMusic, setAiState, stopMusic]);
+  }, [enqueueSpeech, getCurrentTtsOverrides, normalizedBackendUrl, playMusic, setAiState, stopMusic]);
 
   useEffect(() => {
     sendPayloadRef.current = sendPayload;

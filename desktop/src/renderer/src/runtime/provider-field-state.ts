@@ -2,6 +2,13 @@ function getManifestFieldValue(field) {
   return String(field?.value ?? field?.defaultValue ?? "");
 }
 
+function getEditableProviders(manifest) {
+  return [
+    ...(manifest?.model?.chat?.providers || []),
+    ...(manifest?.model?.chat?.tts?.providers || []),
+  ];
+}
+
 export function resolveProviderFieldState({
   manifest,
   previousValues = {},
@@ -10,7 +17,7 @@ export function resolveProviderFieldState({
   const values = {};
   const manifestValues = {};
 
-  for (const provider of manifest?.model?.chat?.providers || []) {
+  for (const provider of getEditableProviders(manifest)) {
     const providerId = String(provider?.id || "").trim();
     if (!providerId) {
       continue;

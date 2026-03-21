@@ -6,7 +6,7 @@ from fastapi.responses import StreamingResponse
 from ..api_models import CreateSessionBody
 from ..app_context import AppContext
 from ..manifest import build_app_manifest
-from ..services.tts_service import TtsRequest
+from ..services.tts_service import TtsRequest, extract_tts_overrides
 
 
 def create_runtime_router(context: AppContext) -> APIRouter:
@@ -30,7 +30,7 @@ def create_runtime_router(context: AppContext) -> APIRouter:
                 text=text,
                 mode=mode,
                 provider_override=provider_override,
-                overrides=body,
+                overrides=extract_tts_overrides(body, include_root_fields=True),
             )
         )
         return StreamingResponse(iter([audio_bytes]), media_type=content_type, headers={'Cache-Control': 'no-store'})

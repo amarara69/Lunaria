@@ -3,9 +3,10 @@ from __future__ import annotations
 import json
 
 from .config import PATCHED_MODEL_JSON, get_chat_config, get_chat_providers, get_live2d_config, get_model_dir, get_model_or_raise, get_models, get_tts_config
+from .tts_backends import TTS_BACKEND_REGISTRY
 
 
-PROVIDER_FIELD_SCHEMAS = {
+CHAT_PROVIDER_FIELD_SCHEMAS = {
     'openclaw-channel': [
         {'key': 'bridgeUrl', 'label': 'Bridge URL', 'input': 'text', 'placeholder': 'ws://127.0.0.1:18790', 'defaultValue': 'ws://127.0.0.1:18790'},
         {'key': 'agent', 'label': 'Agent', 'input': 'text', 'placeholder': 'main', 'defaultValue': 'main'},
@@ -15,6 +16,32 @@ PROVIDER_FIELD_SCHEMAS = {
         {'key': 'baseUrl', 'label': 'Base URL', 'input': 'text', 'placeholder': 'http://127.0.0.1:8317/v1', 'defaultValue': ''},
         {'key': 'model', 'label': 'Provider Model', 'input': 'text', 'placeholder': 'gpt-5.4', 'defaultValue': 'gpt-5.4'},
     ],
+}
+
+OPENAI_TTS_FIELD_SCHEMA = [
+    {'key': 'baseUrl', 'label': 'Base URL', 'input': 'text', 'placeholder': 'http://127.0.0.1:8001', 'defaultValue': ''},
+    {'key': 'model', 'label': 'TTS Model', 'input': 'text', 'placeholder': 'tts-1', 'defaultValue': 'tts-1'},
+    {'key': 'voice', 'label': 'Voice', 'input': 'text', 'placeholder': 'alloy', 'defaultValue': 'alloy'},
+    {'key': 'responseFormat', 'label': 'Response Format', 'input': 'text', 'placeholder': 'wav', 'defaultValue': 'wav'},
+    {'key': 'speed', 'label': 'Speed', 'input': 'text', 'placeholder': '1.0', 'defaultValue': '1.0'},
+    {'key': 'apiKey', 'label': 'API Key', 'input': 'password', 'placeholder': '', 'defaultValue': ''},
+]
+
+TTS_PROVIDER_FIELD_SCHEMAS = {
+    'edge-tts': [
+        {'key': 'voice', 'label': 'Voice', 'input': 'text', 'placeholder': 'zh-CN-XiaoxiaoNeural', 'defaultValue': 'zh-CN-XiaoxiaoNeural'},
+        {'key': 'rate', 'label': 'Rate', 'input': 'text', 'placeholder': '+0%', 'defaultValue': '+0%'},
+        {'key': 'pitch', 'label': 'Pitch', 'input': 'text', 'placeholder': '+0Hz', 'defaultValue': '+0Hz'},
+        {'key': 'volume', 'label': 'Volume', 'input': 'text', 'placeholder': '+0%', 'defaultValue': '+0%'},
+    ],
+    'openai-compatible': OPENAI_TTS_FIELD_SCHEMA,
+    'gpt-sovits': OPENAI_TTS_FIELD_SCHEMA,
+}
+
+TTS_PROVIDER_NAMES = {
+    'edge-tts': 'Edge TTS',
+    'openai-compatible': 'OpenAI-Compatible TTS',
+    'gpt-sovits': 'GPT-SoVITS',
 }
 
 
@@ -60,19 +87,36 @@ def build_patched_model_json(model_config: dict) -> dict:
     return data
 
 
-def _resolve_provider_fields(provider: dict, chat_defaults: dict) -> list[dict]:
-    schema = PROVIDER_FIELD_SCHEMAS.get(str(provider.get('type') or '').strip(), [])
-    defaults = chat_defaults.get(str(provider.get('id') or '')) or {}
+def _resolve_fields(schema: list[dict], *, defaults: dict | None = None, values: dict | None = None) -> list[dict]:
     fields = []
     for field in schema:
         key = field['key']
-        value = defaults.get(key)
+        value = (defaults or {}).get(key)
         if value is None:
-            value = provider.get(key)
+            value = (values or {}).get(key)
         field_def = dict(field)
         field_def['value'] = value if value is not None else field.get('defaultValue', '')
         fields.append(field_def)
     return fields
+
+
+def _resolve_provider_fields(provider: dict, chat_defaults: dict) -> list[dict]:
+    schema = CHAT_PROVIDER_FIELD_SCHEMAS.get(str(provider.get('type') or '').strip(), [])
+    defaults = chat_defaults.get(str(provider.get('id') or '')) or {}
+    return _resolve_fields(schema, defaults=defaults, values=provider)
+
+
+def build_tts_provider_manifest(provider_id: str, provider_config: dict) -> dict:
+    fields = _resolve_fields(TTS_PROVIDER_FIELD_SCHEMAS.get(provider_id, []), values=provider_config)
+    item = {
+        'id': provider_id,
+        'name': TTS_PROVIDER_NAMES.get(provider_id, provider_id),
+        'fields': fields,
+        'editableFields': [field['key'] for field in fields],
+    }
+    for field in fields:
+        item[field['key']] = field.get('value', '')
+    return item
 
 
 def build_provider_manifest(provider: dict, chat_defaults: dict) -> dict:
@@ -103,15 +147,9 @@ def build_model_manifest(model_config: dict) -> dict:
 
     tts_providers = []
     providers_map = tts_config.get('providers') or {}
-    for provider_id in ['edge-tts', 'gpt-sovits']:
+    for provider_id in TTS_BACKEND_REGISTRY:
         if provider_id in providers_map:
-            tts_providers.append({
-                'id': provider_id,
-                'name': {
-                    'edge-tts': 'Edge TTS',
-                    'gpt-sovits': 'GPT-SoVITS',
-                }.get(provider_id, provider_id),
-            })
+            tts_providers.append(build_tts_provider_manifest(provider_id, dict(providers_map.get(provider_id) or {})))
 
     model_live2d = model_config.get('live2d') or {}
     model_focus_center = model_live2d.get('focusCenter') or {}

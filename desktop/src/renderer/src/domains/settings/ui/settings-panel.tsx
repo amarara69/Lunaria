@@ -238,6 +238,7 @@ export function SettingsPanel({
               <Box key={`${currentProviderId}.${field.key}`}>
                 <FieldLabel>{label}</FieldLabel>
                 <input
+                  type={field.input === "password" ? "password" : "text"}
                   value={providerFieldValues[`${currentProviderId}.${field.key}`] ?? String(field.value ?? field.defaultValue ?? "")}
                   onChange={(event) => setProviderFieldValue(currentProviderId, field.key, event.target.value)}
                   placeholder={resolveProviderFieldPlaceholder(field)}
@@ -261,6 +262,24 @@ export function SettingsPanel({
             <option key={provider.id} value={provider.id}>{provider.name}</option>
           ))}
         </select>
+
+        <Stack gap="2.5">
+          {(manifest?.model.chat.tts.providers.find((provider) => provider.id === ttsProvider)?.fields || []).map((field) => {
+            const label = resolveProviderFieldLabel(field);
+            return (
+              <Box key={`${ttsProvider}.${field.key}`}>
+                <FieldLabel>{label}</FieldLabel>
+                <input
+                  type={field.input === "password" ? "password" : "text"}
+                  value={providerFieldValues[`${ttsProvider}.${field.key}`] ?? String(field.value ?? field.defaultValue ?? "")}
+                  onChange={(event) => setProviderFieldValue(ttsProvider, field.key, event.target.value)}
+                  placeholder={resolveProviderFieldPlaceholder(field)}
+                  style={sectionFieldStyle({ marginTop: 6 })}
+                />
+              </Box>
+            );
+          })}
+        </Stack>
 
         <ToggleRow
           label={t("settings.toggles.followCursor")}

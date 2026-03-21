@@ -19,6 +19,51 @@ from concurrent.futures import ThreadPoolExecutor
 from ..config import get_tts_config, get_tts_provider_config
 from ..tts_backends import create_tts_backend
 
+ROOT_TTS_OVERRIDE_KEYS = {
+    "apiKey",
+    "baseUrl",
+    "characterName",
+    "model",
+    "otherParams",
+    "other_params",
+    "pitch",
+    "predefinedCharacterName",
+    "rate",
+    "responseFormat",
+    "response_format",
+    "speed",
+    "timeoutSeconds",
+    "voice",
+    "volume",
+    "workflowPath",
+}
+
+
+def _has_override_value(value: object) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    return True
+
+
+def extract_tts_overrides(payload: dict | None, *, include_root_fields: bool = False) -> dict:
+    body = dict(payload or {})
+    overrides: dict = {}
+
+    nested = body.get("ttsOverrides")
+    if isinstance(nested, dict):
+        overrides.update(nested)
+
+    if include_root_fields:
+        for key in ROOT_TTS_OVERRIDE_KEYS:
+            value = body.get(key)
+            if not _has_override_value(value):
+                continue
+            overrides.setdefault(key, value)
+
+    return overrides
+
 
 @dataclass(slots=True)
 class TtsRequest:

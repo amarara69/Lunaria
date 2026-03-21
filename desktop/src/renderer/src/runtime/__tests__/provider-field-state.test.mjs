@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 import { resolveProviderFieldState } from "../provider-field-state.ts";
 
-function buildManifest(fieldsByProvider) {
+function buildManifest(fieldsByProvider, ttsFieldsByProvider = {}) {
   return {
     model: {
       chat: {
@@ -14,6 +14,15 @@ function buildManifest(fieldsByProvider) {
             value,
           })),
         })),
+        tts: {
+          providers: Object.entries(ttsFieldsByProvider).map(([providerId, fields]) => ({
+            id: providerId,
+            fields: Object.entries(fields).map(([key, value]) => ({
+              key,
+              value,
+            })),
+          })),
+        },
       },
     },
   };
@@ -128,6 +137,45 @@ test("resolveProviderFieldState preserves explicit user overrides", () => {
       manifestValues: {
         "live2d-channel.bridgeUrl": "ws://127.0.0.1:18789",
         "live2d-channel.agent": "main",
+      },
+    },
+  );
+});
+
+test("resolveProviderFieldState includes TTS provider fields alongside chat provider fields", () => {
+  const manifest = buildManifest(
+    {
+      "live2d-channel": {
+        bridgeUrl: "ws://127.0.0.1:18081",
+      },
+    },
+    {
+      "openai-compatible": {
+        baseUrl: "http://127.0.0.1:8001/v1",
+        model: "tts-1",
+        voice: "alloy",
+      },
+    },
+  );
+
+  assert.deepEqual(
+    resolveProviderFieldState({
+      manifest,
+      previousValues: {},
+      previousManifestValues: {},
+    }),
+    {
+      values: {
+        "live2d-channel.bridgeUrl": "ws://127.0.0.1:18081",
+        "openai-compatible.baseUrl": "http://127.0.0.1:8001/v1",
+        "openai-compatible.model": "tts-1",
+        "openai-compatible.voice": "alloy",
+      },
+      manifestValues: {
+        "live2d-channel.bridgeUrl": "ws://127.0.0.1:18081",
+        "openai-compatible.baseUrl": "http://127.0.0.1:8001/v1",
+        "openai-compatible.model": "tts-1",
+        "openai-compatible.voice": "alloy",
       },
     },
   );

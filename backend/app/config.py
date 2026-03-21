@@ -70,7 +70,21 @@ def _apply_tts_env_overrides(config: dict) -> None:
     providers = tts.get('providers') or {}
     for provider_id, provider in providers.items():
         env_key_prefix = str(provider_id).upper().replace('-', '_')
-        for field in ('apiKey', 'baseUrl', 'voice', 'model', 'workflowPath', 'characterName', 'predefinedCharacterName'):
+        for field in (
+            'apiKey',
+            'baseUrl',
+            'characterName',
+            'model',
+            'pitch',
+            'predefinedCharacterName',
+            'rate',
+            'responseFormat',
+            'speed',
+            'timeoutSeconds',
+            'voice',
+            'volume',
+            'workflowPath',
+        ):
             env_name = f'LUNARIA_TTS_PROVIDER_{env_key_prefix}_{field.upper()}'
             if env_name in os.environ:
                 provider[field] = os.environ[env_name]

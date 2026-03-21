@@ -1,15 +1,29 @@
 const ALLOWED_OVERRIDE_KEYS = new Set([
-  "wsUrl",
-  "bridgeUrl",
+  "apiKey",
   "baseUrl",
+  "bridgeUrl",
   "model",
+  "voice",
+  "speed",
+  "responseFormat",
+  "response_format",
+  "otherParams",
+  "other_params",
+  "rate",
+  "pitch",
+  "volume",
+  "timeoutSeconds",
   "agent",
   "session",
-  "apiKey",
   "token",
+  "wsUrl",
 ]);
 
-export function getProviderOverridesPayload(provider, values) {
+export function getProviderOverridesPayload(
+  provider,
+  values,
+  options: { nestKey?: string } | undefined = undefined,
+) {
   if (!provider || !values) {
     return {};
   }
@@ -26,6 +40,13 @@ export function getProviderOverridesPayload(provider, values) {
       continue;
     }
     payload[fieldKey] = value;
+  }
+
+  const nestKey = String(options?.nestKey || "").trim();
+  if (nestKey) {
+    return Object.keys(payload).length
+      ? { [nestKey]: payload }
+      : {};
   }
 
   return payload;

@@ -22,16 +22,19 @@ class ManifestCleanupTests(unittest.TestCase):
 
         provider_types = {item["type"] for item in manifest["chat"]["providers"]}
         tts_provider_ids = [item["id"] for item in manifest["chat"]["tts"]["providers"]]
+        openai_tts_provider = next(item for item in manifest["chat"]["tts"]["providers"] if item["id"] == "openai-compatible")
+        openai_tts_field_keys = [field["key"] for field in openai_tts_provider["fields"]]
 
         self.assertEqual(provider_types, {"openclaw-channel", "openai-compatible"})
-        self.assertEqual(tts_provider_ids, ["edge-tts", "gpt-sovits"])
+        self.assertEqual(tts_provider_ids, ["edge-tts", "openai-compatible", "gpt-sovits"])
         self.assertNotEqual(manifest["chat"]["defaultProviderId"], "gateway")
+        self.assertEqual(openai_tts_field_keys[:3], ["baseUrl", "model", "voice"])
 
     def test_agent_backend_registry_does_not_include_gateway(self) -> None:
         self.assertNotIn("gateway", AGENT_BACKEND_REGISTRY)
 
     def test_tts_backend_registry_only_keeps_public_backends(self) -> None:
-        self.assertEqual(set(TTS_BACKEND_REGISTRY), {"edge-tts", "gpt-sovits"})
+        self.assertEqual(set(TTS_BACKEND_REGISTRY), {"edge-tts", "gpt-sovits", "openai-compatible"})
 
 
 if __name__ == "__main__":
