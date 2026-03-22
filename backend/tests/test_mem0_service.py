@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -15,7 +16,7 @@ class Mem0ServiceSupportTests(unittest.TestCase):
             prompt_root = home / ".lunaria"
             prompt_root.mkdir(parents=True, exist_ok=True)
             (prompt_root / "AGENTS.md").write_text("# Agents\nagent rules", encoding="utf-8")
-            (prompt_root / "IDENTIFY.md").write_text("# Identify\nidentity rules", encoding="utf-8")
+            (prompt_root / "IDENTITY.md").write_text("# Identify\nidentity rules", encoding="utf-8")
 
             with patch("backend.app.services.mem0_service.Path.home", return_value=home):
                 sections = load_prompt_markdown_sections({})
@@ -24,7 +25,7 @@ class Mem0ServiceSupportTests(unittest.TestCase):
             sections,
             [
                 "# AGENTS.md\n\n# Agents\nagent rules",
-                "# IDENTIFY.md\n\n# Identify\nidentity rules",
+                "# IDENTITY.md\n\n# Identify\nidentity rules",
             ],
         )
 
@@ -34,7 +35,7 @@ class Mem0ServiceSupportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             (root / "AGENTS.md").write_text("# Agents\nagent rules", encoding="utf-8")
-            (root / "IDENTIFY.md").write_text("# Identify\nidentity rules", encoding="utf-8")
+            (root / "IDENTITY.md").write_text("# Identify\nidentity rules", encoding="utf-8")
             (root / "ROLE.md").write_text("# Role\nextra role rules", encoding="utf-8")
 
             sections = load_prompt_markdown_sections(
@@ -48,7 +49,7 @@ class Mem0ServiceSupportTests(unittest.TestCase):
             sections,
             [
                 "# AGENTS.md\n\n# Agents\nagent rules",
-                "# IDENTIFY.md\n\n# Identify\nidentity rules",
+                "# IDENTITY.md\n\n# Identify\nidentity rules",
                 "# ROLE.md\n\n# Role\nextra role rules",
             ],
         )
@@ -60,7 +61,7 @@ class Mem0ServiceSupportTests(unittest.TestCase):
             root = Path(temp_dir)
             (root / "AGENTS.md").write_text("# Agents\nagent rules", encoding="utf-8")
 
-            with self.assertRaisesRegex(RuntimeError, "IDENTIFY.md"):
+            with self.assertRaisesRegex(RuntimeError, "IDENTITY.md"):
                 load_prompt_markdown_sections({}, prompt_root=root)
 
     def test_build_mem0_oss_config_uses_local_chroma_and_separate_embedding_settings(self) -> None:
@@ -82,10 +83,36 @@ class Mem0ServiceSupportTests(unittest.TestCase):
         self.assertEqual(config["vector_store"]["config"]["path"], "data/mem0/chroma")
         self.assertEqual(config["embedder"]["provider"], "openai")
         self.assertEqual(config["embedder"]["config"]["api_key"], "embed-key")
-        self.assertEqual(config["embedder"]["config"]["base_url"], "http://127.0.0.1:11434/v1")
+        self.assertEqual(config["embedder"]["config"]["openai_base_url"], "http://127.0.0.1:11434/v1")
         self.assertEqual(config["llm"]["provider"], "openai")
         self.assertEqual(config["llm"]["config"]["api_key"], "chat-key")
-        self.assertEqual(config["llm"]["config"]["base_url"], "http://127.0.0.1:8317/v1")
+        self.assertEqual(config["llm"]["config"]["openai_base_url"], "http://127.0.0.1:8317/v1")
+
+    def test_add_exchange_passes_infer_false_to_mem0(self) -> None:
+        from backend.app.services.mem0_service import Mem0Service
+
+        class _FakeMemory:
+            def __init__(self):
+                self.calls = []
+
+            def add(self, **kwargs):
+                self.calls.append(kwargs)
+                return {"results": []}
+
+        fake_memory = _FakeMemory()
+        service = Mem0Service({"id": "lunaria-main"})
+
+        with patch.object(service, "_get_memory", return_value=fake_memory):
+            service.add_exchange(
+                user_text="我喜欢乌龙茶。",
+                assistant_text="记住了。",
+                user_id="desktop-user",
+                agent_id="main",
+                run_id="live2d:direct:desktop-user",
+            )
+
+        self.assertEqual(fake_memory.calls[0]["messages"][0]["content"], "我喜欢乌龙茶。")
+        self.assertIs(fake_memory.calls[0]["infer"], False)
 
 
 if __name__ == "__main__":

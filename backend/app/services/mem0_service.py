@@ -6,7 +6,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 PROMPT_MARKDOWN_ROOT = Path.home() / ".lunaria"
-MANDATORY_PROMPT_MARKDOWN_FILES = ("AGENTS.md", "IDENTIFY.md")
+MANDATORY_PROMPT_MARKDOWN_FILES = ("AGENTS.md", "IDENTITY.md")
 _MEM0_SERVICE_CACHE: dict[str, "Mem0Service"] = {}
 _MEM0_SERVICE_LOCK = threading.Lock()
 
@@ -74,7 +74,7 @@ def build_mem0_oss_config(provider_config: dict) -> dict:
             "provider": "openai",
             "config": {
                 "api_key": embedding_api_key,
-                "base_url": embedding_base_url,
+                "openai_base_url": embedding_base_url,
                 "model": embedding_model,
             },
         },
@@ -82,7 +82,7 @@ def build_mem0_oss_config(provider_config: dict) -> dict:
             "provider": "openai",
             "config": {
                 "api_key": api_key,
-                "base_url": base_url,
+                "openai_base_url": base_url,
                 "model": model,
                 "temperature": 0.0,
             },
@@ -130,7 +130,18 @@ class Mem0Service:
             kwargs["agent_id"] = agent_id
         if scope == "session" and run_id:
             kwargs["run_id"] = run_id
-        return self._get_memory().search(**kwargs)
+        result = self._get_memory().search(**kwargs)
+        response_payload = {
+            "provider": self.provider_config.get("id") or self.provider_config.get("name") or "unknown",
+            "query": kwargs["query"],
+            "limit": kwargs["limit"],
+            "scope": scope,
+        }
+        if isinstance(result, dict):
+            response_payload["results"] = result.get("results") or result.get("memories") or []
+        else:
+            response_payload["results"] = result
+        return result
 
     def add_exchange(
         self,
@@ -148,6 +159,7 @@ class Mem0Service:
         kwargs = {
             "messages": messages,
             "user_id": user_id,
+            "infer": False,
         }
         if agent_id:
             kwargs["agent_id"] = agent_id

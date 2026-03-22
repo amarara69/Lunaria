@@ -15,7 +15,7 @@
   },
   "chat": {
     "defaultProviderId": "live2d-channel",
-    "note": "可手动选择 OpenClaw Channel bridge，或启用 Lunaria agent。其记忆由 Mem0 管理，AGENTS.md / IDENTIFY.md 从 ~/.lunaria 读取。",
+    "note": "可手动选择 OpenClaw Channel bridge，或启用 Lunaria agent。其记忆由 Mem0 管理，AGENTS.md / IDENTITY.md 从 ~/.lunaria 读取。",
     "systemPrompt": "You are Lunaria, the speaking soul of a Live2D desktop character. Reply conversationally, warmly, and concisely in Chinese unless the user asks otherwise. You may use inline square-bracket stage directives such as [expr:Smile] and [motion:Wave:0] when they genuinely improve expression or timing.",
     "promptInjections": [
       {

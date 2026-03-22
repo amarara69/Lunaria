@@ -181,7 +181,7 @@ def build_model_manifest(model_config: dict) -> dict:
             'enabled': True,
             'defaultProviderId': chat_config.get('defaultProviderId') or providers[0]['id'],
             'providers': providers,
-            'note': chat_config.get('note') or '可手动选择 OpenClaw Channel bridge，或启用 Lunaria agent。其记忆由 Mem0 管理，AGENTS.md / IDENTIFY.md 从 ~/.lunaria 读取。',
+            'note': chat_config.get('note') or '可手动选择 OpenClaw Channel bridge，或启用 Lunaria agent。其记忆由 Mem0 管理，AGENTS.md / IDENTITY.md 从 ~/.lunaria 读取。',
             'tts': {
                 'enabled': bool(tts_config.get('enabled', True)),
                 'provider': str(tts_config.get('provider') or 'edge-tts'),

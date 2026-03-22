@@ -194,7 +194,6 @@ class OpenClawChannelAgentBackend(AgentBackend):
         attachments = _prepare_bridge_attachments(request.attachments)
         request_id = str(uuid.uuid4())
         system_prompt = build_system_prompt(request)
-        log_chat_request(self.provider_config, request, system_prompt)
         if attachments:
             print(f"[OpenClawChannel] Sending {len(attachments)} attachment(s): {[{'kind': a.get('kind'), 'mimeType': a.get('mimeType'), 'hasContent': bool(a.get('content')), 'hasUrl': bool(a.get('url')), 'contentLen': len(a.get('content') or ''), 'contentPrefix': (a.get('content') or '')[:24]} for a in attachments]}")
 

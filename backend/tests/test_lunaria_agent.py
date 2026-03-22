@@ -101,7 +101,7 @@ class LunariaAgentBackendTests(unittest.TestCase):
                 "backend.app.agents.lunaria.load_prompt_markdown_sections",
                 return_value=[
                     "# AGENTS.md\n\nagent rules",
-                    "# IDENTIFY.md\n\nidentity rules",
+                    "# IDENTITY.md\n\nidentity rules",
                     "# ROLE.md\n\nrole rules",
                 ],
             ):
@@ -123,7 +123,7 @@ class LunariaAgentBackendTests(unittest.TestCase):
         self.assertEqual(len(requests), 1)
         sent_messages = requests[0]["messages"]
         self.assertEqual(sent_messages[1]["content"], "# AGENTS.md\n\nagent rules")
-        self.assertEqual(sent_messages[2]["content"], "# IDENTIFY.md\n\nidentity rules")
+        self.assertEqual(sent_messages[2]["content"], "# IDENTITY.md\n\nidentity rules")
         self.assertEqual(sent_messages[3]["content"], "# ROLE.md\n\nrole rules")
         self.assertIn("oolong tea", sent_messages[4]["content"].lower())
         self.assertEqual(sent_messages[5]["content"], "我喜欢喝乌龙茶。")
@@ -287,6 +287,85 @@ class LunariaAgentBackendTests(unittest.TestCase):
         self.assertEqual(invoked, [{"arguments": {"value": "hello"}, "context": {"runId": "agent:main:desktop"}}])
         self.assertIn('"echo": "hello"', requests[1]["messages"][-1]["content"])
         self.assertIn('"runId": "agent:main:desktop"', requests[1]["messages"][-1]["content"])
+
+    def test_send_chat_logs_phase_timings_for_markdown_memory_llm_tools_and_writeback(self) -> None:
+        fake_mem0 = _FakeMem0Service()
+        responses = [
+            {
+                "model": "gpt-5.4",
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": "",
+                            "tool_calls": [
+                                {
+                                    "id": "call_1",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "search_memory",
+                                        "arguments": json.dumps({"query": "用户喜欢什么茶"}),
+                                    },
+                                }
+                            ],
+                        }
+                    }
+                ],
+            },
+            {
+                "model": "gpt-5.4",
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": "你喜欢乌龙茶。",
+                        }
+                    }
+                ],
+            },
+        ]
+        request_count = 0
+
+        def fake_urlopen(req, timeout=120):
+            nonlocal request_count
+            response = responses[request_count]
+            request_count += 1
+            return _FakeResponse(response)
+
+        with patch("backend.app.agents.lunaria.get_mem0_service", return_value=fake_mem0):
+            with patch("backend.app.agents.lunaria_tools.get_mem0_service", return_value=fake_mem0):
+                with patch("backend.app.agents.lunaria.load_prompt_markdown_sections", return_value=[]):
+                    with patch("backend.app.agents.lunaria.urllib.request.urlopen", side_effect=fake_urlopen):
+                        with patch("builtins.print") as mock_print:
+                            self.backend.send_chat(
+                                ChatRequest(
+                                    user_text="我喜欢什么茶？",
+                                    agent="main",
+                                    session_name="desktop",
+                                    context={"runId": "agent:main:desktop"},
+                                )
+                            )
+
+        trace_payloads = []
+        for call in mock_print.call_args_list:
+            text = call.args[0]
+            if isinstance(text, str) and text.startswith("[lunaria.trace] "):
+                trace_payloads.append(json.loads(text.split("] ", 1)[1]))
+
+        events = {item["event"] for item in trace_payloads}
+        self.assertTrue(
+            {
+                "prompt.markdown",
+                "memory.search",
+                "llm.round",
+                "tool.call",
+                "memory.write",
+                "request.complete",
+            }.issubset(events)
+        )
+        self.assertTrue(trace_payloads)
+        self.assertEqual({item["traceId"] for item in trace_payloads}.__len__(), 1)
+        self.assertTrue(all(item["provider"] == "lunaria-main" for item in trace_payloads))
 
 
 if __name__ == "__main__":

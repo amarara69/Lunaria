@@ -16,3 +16,4 @@ desktop/dist/
 .env.local
 config.json
 config.local.json
+venv/
