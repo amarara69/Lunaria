@@ -15,6 +15,45 @@ from .common import LIVE2D_INIT_VERSION, build_live2d_init_message, build_system
 # Cross-request guard: `create_agent_backend()` returns a fresh backend instance per HTTP call.
 # We keep the init guard at module level, keyed by (bridgeUrl, sessionKey, modelId).
 _CHANNEL_LIVE2D_INIT_GUARD: set[str] = set()
+_BRIDGE_CONNECT_RETRY_DELAYS = (0.25, 0.5, 1.0)
+
+
+def _is_retryable_bridge_connect_error(exc: BaseException) -> bool:
+    if isinstance(exc, (TimeoutError, ConnectionRefusedError)):
+        return True
+    if isinstance(exc, OSError):
+        if exc.errno in {61, 111, 10061}:
+            return True
+        message = str(exc).lower()
+        return 'connect call failed' in message or 'cannot connect' in message or 'connection refused' in message
+    return False
+
+
+async def _open_bridge_connection(bridge_url: str, **connect_kwargs):
+    try:
+        import websockets
+    except ModuleNotFoundError as exc:
+        raise RuntimeError("Python package 'websockets' is missing from the nix-shell environment.") from exc
+
+    last_exc: BaseException | None = None
+    attempts = len(_BRIDGE_CONNECT_RETRY_DELAYS) + 1
+    connect_options = dict(connect_kwargs)
+    connect_options.setdefault('open_timeout', 3.0)
+    for attempt_index in range(attempts):
+        try:
+            return await websockets.connect(bridge_url, **connect_options)
+        except Exception as exc:  # noqa: BLE001
+            if not _is_retryable_bridge_connect_error(exc) or attempt_index >= attempts - 1:
+                if _is_retryable_bridge_connect_error(exc):
+                    raise RuntimeError(
+                        f'Unable to connect to OpenClaw Live2D bridge at {bridge_url} after {attempts} attempts: {exc}'
+                    ) from exc
+                raise
+            last_exc = exc
+            await asyncio.sleep(_BRIDGE_CONNECT_RETRY_DELAYS[attempt_index])
+    if last_exc is not None:
+        raise RuntimeError(f'Unable to connect to OpenClaw Live2D bridge at {bridge_url}: {last_exc}') from last_exc
+    raise RuntimeError(f'Unable to connect to OpenClaw Live2D bridge at {bridge_url}')
 
 
 def _normalize_base64_payload(data: str) -> str:
@@ -110,15 +149,11 @@ def _run_bridge_listener_forever(provider_config: dict, stop_event: threading.Ev
 
 
 async def _bridge_listener_loop(provider_config: dict, stop_event: threading.Event) -> None:
-    try:
-        import websockets
-    except ModuleNotFoundError as exc:
-        raise RuntimeError("Python package 'websockets' is missing from the nix-shell environment.") from exc
-
     bridge_url = str(provider_config.get('bridgeUrl') or 'ws://127.0.0.1:18790').strip()
     sender_id = str(provider_config.get('senderId') or 'desktop-user')
     sender_name = str(provider_config.get('senderName') or 'Live2D User')
-    async with websockets.connect(bridge_url, ping_interval=20, ping_timeout=20) as ws:
+    ws = await _open_bridge_connection(bridge_url, ping_interval=20, ping_timeout=20)
+    try:
         await ws.send(json.dumps({
             'type': 'bridge.register',
             'target': sender_id,
@@ -140,6 +175,8 @@ async def _bridge_listener_loop(provider_config: dict, stop_event: threading.Eve
                 _emit_push_message(frame)
             elif ftype in {'pong', 'bridge.registered'}:
                 continue
+    finally:
+        await ws.close()
 
 
 class OpenClawChannelAgentBackend(AgentBackend):
@@ -149,11 +186,6 @@ class OpenClawChannelAgentBackend(AgentBackend):
         emit: StreamEmitter | None = None,
         timeout_seconds: float = 120.0,
     ) -> dict:
-        try:
-            import websockets
-        except ModuleNotFoundError as exc:
-            raise RuntimeError("Python package 'websockets' is missing from the nix-shell environment.") from exc
-
         agent = request.agent or str(self.provider_config.get('agent') or 'main')
         session_name = request.session_name or str(self.provider_config.get('session') or 'main')
         bridge_url = str(self.provider_config.get('bridgeUrl') or 'ws://127.0.0.1:18790').strip()
@@ -166,7 +198,8 @@ class OpenClawChannelAgentBackend(AgentBackend):
         if attachments:
             print(f"[OpenClawChannel] Sending {len(attachments)} attachment(s): {[{'kind': a.get('kind'), 'mimeType': a.get('mimeType'), 'hasContent': bool(a.get('content')), 'hasUrl': bool(a.get('url')), 'contentLen': len(a.get('content') or ''), 'contentPrefix': (a.get('content') or '')[:24]} for a in attachments]}")
 
-        async with websockets.connect(bridge_url) as ws:
+        ws = await _open_bridge_connection(bridge_url)
+        try:
             # The OpenClaw channel bridge does not provide a real system-prompt slot.
             # We therefore send a one-shot init message once per (bridgeUrl, sessionKey, modelId)
             # and combine it with the first user message.
@@ -230,6 +263,8 @@ class OpenClawChannelAgentBackend(AgentBackend):
                     raise RuntimeError(str(frame.get('error') or 'live2d channel bridge error'))
                 else:
                     continue
+        finally:
+            await ws.close()
 
         reply = accumulated_text.strip() or '……我刚刚没有拿到可显示的回复。'
         images = [m for m in final_media if isinstance(m, dict) and m.get('type') == 'image' and m.get('url')]
