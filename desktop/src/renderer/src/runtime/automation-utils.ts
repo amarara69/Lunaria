@@ -1,5 +1,21 @@
-// @ts-nocheck
-export const DEFAULT_AUTOMATION_CONFIG = {
+import type {
+  AutomationConfig,
+  AutomationMusicConfig,
+  AutomationRuleConfig,
+  AutomationRuleState,
+} from "@/domains/types";
+
+type AutomationRuleKey = "proactive" | "screenshot";
+
+type AutomationConfigInput = Partial<
+  Omit<AutomationConfig, "proactive" | "screenshot" | "music">
+> & {
+  proactive?: Partial<AutomationRuleConfig>;
+  screenshot?: Partial<AutomationRuleConfig>;
+  music?: Partial<AutomationMusicConfig>;
+};
+
+export const DEFAULT_AUTOMATION_CONFIG: AutomationConfig = {
   enabled: false,
   onlyPetMode: true,
   proactive: {
@@ -20,7 +36,12 @@ export const DEFAULT_AUTOMATION_CONFIG = {
   },
 };
 
-export function clampNumber(value, min, max, fallback) {
+export function clampNumber(
+  value: unknown,
+  min: number,
+  max: number,
+  fallback: number,
+): number {
   const num = Number(value);
   if (!Number.isFinite(num)) {
     return fallback;
@@ -28,7 +49,9 @@ export function clampNumber(value, min, max, fallback) {
   return Math.min(max, Math.max(min, num));
 }
 
-export function normalizeAutomationConfig(raw = {}) {
+export function normalizeAutomationConfig(
+  raw: AutomationConfigInput = {},
+): AutomationConfig {
   const proactive = raw?.proactive || {};
   const screenshot = raw?.screenshot || {};
   const music = raw?.music || {};
@@ -88,9 +111,15 @@ export function shouldRunAutomationRule({
   mode,
   ruleState,
   now = Date.now(),
-}) {
+}: {
+  config?: AutomationConfigInput | AutomationConfig;
+  ruleKey: AutomationRuleKey;
+  mode?: string | null;
+  ruleState?: Partial<AutomationRuleState> | null;
+  now?: number;
+}): boolean {
   const normalized = normalizeAutomationConfig(config);
-  const ruleConfig = normalized?.[ruleKey];
+  const ruleConfig = normalized[ruleKey];
   if (!normalized.enabled || !ruleConfig?.enabled) {
     return false;
   }

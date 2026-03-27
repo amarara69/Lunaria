@@ -1,5 +1,34 @@
-// @ts-nocheck
-function extractDataUrlParts(dataUrl) {
+import type { ComposerAttachment } from "@/domains/types";
+import type { ChatAttachmentInput } from "@/platform/backend/openclaw-api";
+
+type AttachmentDraft = ComposerAttachment;
+
+interface DataUrlParts {
+  data: string;
+  mediaType: string;
+}
+
+interface CreateFileComposerAttachmentOptions {
+  file?: File;
+  id?: string;
+  previewUrl?: string;
+}
+
+interface CreateTempFileComposerAttachmentOptions {
+  cleanupToken?: string;
+  fileUrl?: string;
+  filename?: string;
+  id?: string;
+  kind?: ComposerAttachment["kind"];
+  mimeType?: string;
+}
+
+interface ResolveComposerAttachmentChatInputOptions {
+  attachment?: Partial<ComposerAttachment> | null;
+  resolvedDataUrl?: string;
+}
+
+function extractDataUrlParts(dataUrl: string): DataUrlParts | null {
   const match = String(dataUrl || "").match(/^data:([^;]+);base64,(.+)$/);
   if (!match) {
     return null;
@@ -11,7 +40,9 @@ function extractDataUrlParts(dataUrl) {
   };
 }
 
-function detectAttachmentKind(mimeType = "application/octet-stream") {
+function detectAttachmentKind(
+  mimeType = "application/octet-stream",
+): ComposerAttachment["kind"] {
   if (mimeType.startsWith("image/")) {
     return "image";
   }
@@ -28,13 +59,13 @@ export function createFileComposerAttachment({
   file,
   id,
   previewUrl = "",
-} = {}) {
+}: CreateFileComposerAttachmentOptions = {}): AttachmentDraft {
   const mimeType = file?.type || "application/octet-stream";
   return {
     data: "",
     file,
     filename: file?.name || "attachment",
-    id,
+    id: id || "",
     kind: detectAttachmentKind(mimeType),
     mimeType,
     previewUrl,
@@ -49,24 +80,24 @@ export function createTempFileComposerAttachment({
   id,
   kind = "image",
   mimeType = "image/png",
-} = {}) {
+}: CreateTempFileComposerAttachmentOptions = {}): AttachmentDraft {
   return {
     cleanupToken,
     data: "",
     filename,
-    id,
+    id: id || "",
     kind,
     mimeType,
-    previewUrl: fileUrl,
+    previewUrl: fileUrl || "",
     source: "base64",
-    tempFileUrl: fileUrl,
+    tempFileUrl: fileUrl || "",
   };
 }
 
 export function resolveComposerAttachmentChatInput({
   attachment,
   resolvedDataUrl,
-} = {}) {
+}: ResolveComposerAttachmentChatInputOptions = {}): ChatAttachmentInput {
   if (attachment?.data) {
     return {
       data: attachment.data,

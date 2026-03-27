@@ -1,8 +1,38 @@
-// @ts-nocheck
+type LipSyncPlaybackMode = "none" | "wav-handler" | "realtime";
+
+interface Live2DModelLike {
+  _externalLipSyncValue: number | null;
+  _wavFileHandler?: {
+    start: (source: string) => void;
+  } | null;
+}
+
+interface Live2DAdapterLike {
+  getModel?: () => Live2DModelLike | null;
+}
+
+interface Live2DManagerLike {
+  getModel?: (index: number) => Live2DModelLike | null;
+}
+
+interface LunariaWindow extends Window {
+  getLAppAdapter?: () => Live2DAdapterLike | undefined;
+  getLive2DManager?: () => Live2DManagerLike | undefined;
+  webkitAudioContext?: typeof AudioContext;
+}
+
+interface CapturableAudioElement extends HTMLAudioElement {
+  captureStream?: () => MediaStream;
+  mozCaptureStream?: () => MediaStream;
+}
+
 export function getLipSyncPlaybackMode({
   audioMimeType = "",
   audioSource = "",
-}) {
+}: {
+  audioMimeType?: string;
+  audioSource?: string;
+}): LipSyncPlaybackMode {
   const mimeType = String(audioMimeType || "").toLowerCase();
   const source = String(audioSource || "").trim().toLowerCase();
   if (!source) {
@@ -20,13 +50,18 @@ export function getLipSyncPlaybackMode({
   return "realtime";
 }
 
-export function getActiveLive2DModel() {
-  const adapter = window.getLAppAdapter?.();
-  return adapter?.getModel?.() || window.getLive2DManager?.()?.getModel?.(0) || null;
+export function getActiveLive2DModel(): Live2DModelLike | null {
+  const runtimeWindow = window as LunariaWindow;
+  const adapter = runtimeWindow.getLAppAdapter?.();
+  return adapter?.getModel?.() || runtimeWindow.getLive2DManager?.()?.getModel?.(0) || null;
 }
 
-export function createRealtimeLipSyncCleanup(audio, model) {
-  const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+export function createRealtimeLipSyncCleanup(
+  audio: CapturableAudioElement,
+  model: Live2DModelLike | null,
+): (() => void) | null {
+  const runtimeWindow = window as LunariaWindow;
+  const AudioContextCtor = globalThis.AudioContext || runtimeWindow.webkitAudioContext;
   if (!AudioContextCtor || !model) {
     return null;
   }

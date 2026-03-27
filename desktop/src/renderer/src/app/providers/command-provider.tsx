@@ -33,10 +33,19 @@ import {
   shouldPreferConfiguredBackendUrl,
 } from "@/runtime/backend-connection-utils.ts";
 import { getConnectionStateAfterChatError } from "@/runtime/chat-runtime-utils.ts";
+import {
+  dispatchChatPlaybackActions,
+  waitForPlaybackQueue,
+} from "@/runtime/chat-playback-actions.ts";
 import { resolveFocusCenterConfig } from "@/runtime/focus-center-utils.ts";
 import { getManifestHydrationState } from "@/runtime/manifest-hydration-utils.ts";
 import { resolveProviderFieldState } from "@/runtime/provider-field-state.ts";
 import { getProviderOverridesPayload } from "@/runtime/provider-overrides.ts";
+import {
+  buildOptimisticChatSendState,
+  createOptimisticChatMessage,
+} from "@/runtime/chat-send-lifecycle.ts";
+import { reduceChatStreamEvent } from "@/runtime/chat-stream-event-handlers.ts";
 import {
   shouldUseGlobalCursorTracking,
   toRendererPointerFromScreenPoint,
@@ -219,35 +228,6 @@ function buildPetAnchor(
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
-}
-
-function createOptimisticMessage(
-  sessionId: string,
-  role: "user" | "assistant" | "system",
-  text: string,
-  attachments: LunariaAttachment[] = [],
-  source = "chat",
-): LunariaMessage {
-  return {
-    id: `${role}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-    sessionId,
-    role,
-    text,
-    attachments,
-    source,
-    createdAt: Math.floor(Date.now() / 1000),
-  };
-}
-
-function filterMusicActions(actions: unknown[], allowMusicActions: boolean): unknown[] {
-  if (allowMusicActions) {
-    return Array.isArray(actions) ? actions : [];
-  }
-
-  return (Array.isArray(actions) ? actions : []).filter((action) => {
-    const type = String((action as Record<string, unknown>)?.type || "").trim().toLowerCase();
-    return type !== "play_music" && type !== "stop_music";
-  });
 }
 
 function normalizePluginAttachments(
@@ -551,18 +531,18 @@ export function RendererCommandProvider({
       return;
     }
 
-    const message = createOptimisticMessage(
+    const message = createOptimisticChatMessage({
       sessionId,
-      "assistant",
+      role: "assistant",
       text,
-      attachments.map((attachment) => ({
+      attachments: attachments.map((attachment) => ({
         kind: attachment.kind,
         mimeType: attachment.mimeType,
         filename: attachment.filename,
         data: attachment.data,
       })),
-      "plugin",
-    );
+      source: "plugin",
+    });
     state.appendMessageForSession(sessionId, message);
   }, []);
 
@@ -600,36 +580,17 @@ export function RendererCommandProvider({
       state.clearComposer();
     }
 
-    if (payload.systemNote) {
-      state.appendMessageForSession(sessionId, createOptimisticMessage(
-        sessionId,
-        "system",
-        payload.systemNote,
-        [],
-        "system",
-      ));
-    }
-
-    if (payload.showUserBubble !== false) {
-      const optimisticUser = createOptimisticMessage(
-        sessionId,
-        "user",
-        payload.text,
-        (payload.attachments || []).map((attachment) => ({
-          mimeType: attachment.mediaType,
-          data: attachment.type === "base64" ? attachment.data : undefined,
-          url: attachment.type === "url" ? attachment.data : undefined,
-        })),
-      );
-      state.appendMessageForSession(sessionId, optimisticUser);
-    }
-    state.setStreamingMessage({
-      id: `stream_${Date.now()}`,
+    const optimisticState = buildOptimisticChatSendState({
       sessionId,
-      text: "",
-      rawText: "",
-      createdAt: Math.floor(Date.now() / 1000),
+      text: payload.text,
+      attachments: payload.attachments || [],
+      systemNote: payload.systemNote,
+      showUserBubble: payload.showUserBubble !== false,
     });
+    for (const optimisticMessage of optimisticState.optimisticMessages) {
+      state.appendMessageForSession(sessionId, optimisticMessage);
+    }
+    state.setStreamingMessage(optimisticState.streamingMessage);
     state.setConnectionState("connecting");
     state.setSubtitle("");
     setAiState(AiStateEnum.THINKING_SPEAKING);
@@ -659,20 +620,41 @@ export function RendererCommandProvider({
           onEvent: (event: ChatStreamEvent) => {
             if (event.event === "chunk") {
               useAppStore.setState((current) => ({
-                streamingMessage: current.streamingMessage
-                  ? {
-                    ...current.streamingMessage,
-                    text: event.data.visibleText || current.streamingMessage.text,
-                    rawText: event.data.rawText || current.streamingMessage.rawText,
-                  }
-                  : current.streamingMessage,
-                subtitle: event.data.visibleText || current.subtitle,
+                ...(() => {
+                  const reduced = reduceChatStreamEvent({
+                    event,
+                    streamingMessage: current.streamingMessage,
+                    subtitle: current.subtitle,
+                    actions: streamingActionsRef.current,
+                  });
+                  return {
+                    streamingMessage: reduced.streamingMessage,
+                    subtitle: reduced.subtitle,
+                  };
+                })(),
               }));
               return;
             }
 
-            if (event.event === "timeline") {
-              const unit = event.data.unit;
+            const currentState = useAppStore.getState();
+            const reduced = reduceChatStreamEvent({
+              event,
+              streamingMessage: currentState.streamingMessage,
+              subtitle: currentState.subtitle,
+              actions: streamingActionsRef.current,
+            });
+            streamingActionsRef.current = reduced.actions;
+
+            if (reduced.error) {
+              throw new Error(reduced.error);
+            }
+
+            if (reduced.subtitle !== currentState.subtitle) {
+              currentState.setSubtitle(reduced.subtitle);
+            }
+
+            if (reduced.timelineUnit) {
+              const unit = reduced.timelineUnit;
               enqueueSpeech({
                 text: unit.text || "",
                 audioUrl: unit.audioUrl
@@ -684,27 +666,6 @@ export function RendererCommandProvider({
               });
               return;
             }
-
-            if (event.event === "action") {
-              streamingActionsRef.current = [
-                ...streamingActionsRef.current,
-                ...(event.data.actions || []),
-              ];
-              return;
-            }
-
-            if (event.event === "final") {
-              streamingActionsRef.current = [
-                ...streamingActionsRef.current,
-                ...(event.data.actions || []),
-              ];
-              useAppStore.getState().setSubtitle(event.data.reply || "");
-              return;
-            }
-
-            if (event.event === "error") {
-              throw new Error(event.data.error || "chat stream error");
-            }
           },
         },
       );
@@ -714,15 +675,15 @@ export function RendererCommandProvider({
       useAppStore.getState().setConnectionState("open");
       const refreshed = await fetchSessions(normalizedBackendUrl);
       useAppStore.getState().setSessions(refreshed.sessions || []);
-      await pluginRuntimeRef.current?.dispatchActions(filterMusicActions(
-        streamingActionsRef.current,
-        payload.allowMusicActions ?? true,
-      ), {
+      await dispatchChatPlaybackActions({
+        pluginRuntime: pluginRuntimeRef.current,
+        actions: streamingActionsRef.current,
+        allowMusicActions: payload.allowMusicActions ?? true,
         playMusic,
         stopMusic,
       });
       streamingActionsRef.current = [];
-      await playbackQueueRef.current.catch((error) => {
+      await waitForPlaybackQueue(playbackQueueRef.current, (error) => {
         console.warn("Speech queue failed while finishing chat:", error);
       });
       setAiState(AiStateEnum.IDLE);
@@ -1136,13 +1097,15 @@ export function RendererCommandProvider({
       playExpression(String(action.name || ""));
       return;
     }
-    await pluginRuntimeRef.current?.dispatchActions([
-      {
-        type: rawType || "call",
-        tool: action.tool || action.name || getQuickActionLabel(action as any),
-        args: action.args || {},
-      },
-    ], {
+    await dispatchChatPlaybackActions({
+      pluginRuntime: pluginRuntimeRef.current,
+      actions: [
+        {
+          type: rawType || "call",
+          tool: action.tool || action.name || getQuickActionLabel(action as any),
+          args: action.args || {},
+        },
+      ],
       playMusic,
       stopMusic,
     });

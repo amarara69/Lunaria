@@ -1,4 +1,18 @@
-// @ts-nocheck
+interface ShouldAutoScrollMessageListOptions {
+  previousSessionId?: string | null;
+  nextSessionId?: string | null;
+  previousMessageCount?: number;
+  nextMessageCount?: number;
+  previousStreamingText?: string | null;
+  nextStreamingText?: string | null;
+}
+
+interface GetLunariaScrollbarStylesOptions {
+  hidden?: boolean;
+}
+
+type LunariaScrollbarStyles = Record<string, string | Record<string, string>>;
+
 export function shouldAutoScrollMessageList({
   previousSessionId,
   nextSessionId,
@@ -6,7 +20,7 @@ export function shouldAutoScrollMessageList({
   nextMessageCount,
   previousStreamingText,
   nextStreamingText,
-}) {
+}: ShouldAutoScrollMessageListOptions): boolean {
   if (previousSessionId !== nextSessionId) {
     return true;
   }
@@ -18,7 +32,9 @@ export function shouldAutoScrollMessageList({
   return nextStreamingText !== previousStreamingText;
 }
 
-export function getLunariaScrollbarStyles(options = {}) {
+export function getLunariaScrollbarStyles(
+  options: GetLunariaScrollbarStylesOptions = {},
+): LunariaScrollbarStyles {
   if (options.hidden) {
     return {
       scrollbarWidth: "none",
