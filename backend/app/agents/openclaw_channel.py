@@ -11,6 +11,7 @@ from collections.abc import Callable
 
 from .base import AgentBackend, ChatAttachment, ChatRequest, StreamEmitter
 from .common import LIVE2D_INIT_VERSION, build_live2d_init_message, build_system_prompt, log_chat_request, log_chat_response
+from ..utils import log_push_debug
 
 # Cross-request guard: `create_agent_backend()` returns a fresh backend instance per HTTP call.
 # We keep the init guard at module level, keyed by (bridgeUrl, sessionKey, modelId).
@@ -99,6 +100,17 @@ def set_push_callback(callback: Callable[[dict], None] | None) -> None:
 
 
 def _emit_push_message(frame: dict) -> None:
+    log_push_debug(
+        'listener.dispatch',
+        frame_type=frame.get('type'),
+        provider_id=frame.get('providerId'),
+        route_key=frame.get('routeKey'),
+        session_key=frame.get('sessionKey'),
+        agent=frame.get('agent'),
+        session=frame.get('session'),
+        text=frame.get('text') or frame.get('reply'),
+        attachments=frame.get('attachments') or [],
+    )
     callback = _PUSH_CALLBACK
     if callback is not None:
         callback(frame)
@@ -128,6 +140,14 @@ def ensure_bridge_listener(provider_config: dict) -> None:
     )
     _PUSH_THREADS[listener_id] = thread
     thread.start()
+    log_push_debug(
+        'listener.start',
+        listener_id=listener_id,
+        provider_id=provider_config.get('id'),
+        bridge_url=provider_config.get('bridgeUrl'),
+        sender_id=provider_config.get('senderId'),
+        sender_name=provider_config.get('senderName'),
+    )
 
 
 def stop_bridge_listener() -> None:
@@ -143,7 +163,9 @@ def _run_bridge_listener_forever(provider_config: dict, stop_event: threading.Ev
             asyncio.run(_bridge_listener_loop(provider_config, stop_event))
         except Exception as exc:
             print(f'[OpenClawChannel] push listener error: {exc}')
+            log_push_debug('listener.error', error=repr(exc), provider_id=provider_config.get('id'))
         if not stop_event.wait(3.0):
+            log_push_debug('listener.retry', provider_id=provider_config.get('id'), bridge_url=provider_config.get('bridgeUrl'))
             continue
         break
 
@@ -153,6 +175,7 @@ async def _bridge_listener_loop(provider_config: dict, stop_event: threading.Eve
     sender_id = str(provider_config.get('senderId') or 'desktop-user')
     sender_name = str(provider_config.get('senderName') or 'Live2D User')
     ws = await _open_bridge_connection(bridge_url, ping_interval=20, ping_timeout=20)
+    log_push_debug('listener.connected', provider_id=provider_config.get('id'), bridge_url=bridge_url, sender_id=sender_id)
     try:
         await ws.send(json.dumps({
             'type': 'bridge.register',
@@ -162,20 +185,36 @@ async def _bridge_listener_loop(provider_config: dict, stop_event: threading.Eve
             'providerId': str(provider_config.get('id') or '').strip(),
             'ts': time.time(),
         }))
+        log_push_debug('listener.registered', provider_id=provider_config.get('id'), bridge_url=bridge_url, sender_id=sender_id)
         while not stop_event.is_set():
             try:
                 raw = await asyncio.wait_for(ws.recv(), timeout=30)
             except TimeoutError:
                 await ws.send(json.dumps({'type': 'ping', 'ts': time.time()}))
+                log_push_debug('listener.ping', provider_id=provider_config.get('id'), bridge_url=bridge_url)
                 continue
             frame = json.loads(raw)
             ftype = str(frame.get('type') or '')
+            log_push_debug(
+                'listener.frame',
+                frame_type=ftype,
+                provider_id=provider_config.get('id') or frame.get('providerId'),
+                request_id=frame.get('requestId'),
+                route_key=frame.get('routeKey'),
+                session_key=frame.get('sessionKey'),
+                agent=frame.get('agent'),
+                session=frame.get('session'),
+                conversation_label=frame.get('conversationLabel'),
+                text=frame.get('text') or frame.get('reply') or frame.get('delta'),
+                attachments=frame.get('attachments') or [],
+            )
             if ftype == 'push.message':
                 frame['providerId'] = str(provider_config.get('id') or frame.get('providerId') or 'live2d-channel').strip()
                 _emit_push_message(frame)
             elif ftype in {'pong', 'bridge.registered'}:
                 continue
     finally:
+        log_push_debug('listener.closed', provider_id=provider_config.get('id'), bridge_url=bridge_url)
         await ws.close()
 
 

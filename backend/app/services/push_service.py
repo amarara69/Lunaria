@@ -18,6 +18,7 @@ import threading
 from dataclasses import dataclass
 
 from ..config import get_tts_config
+from ..utils import log_push_debug
 from .tts_service import TtsRequest, TtsService
 
 
@@ -56,9 +57,19 @@ class PushService:
 
     def enqueue(self, frame: dict) -> None:
         self.start()
+        log_push_debug(
+            "queue.enqueue",
+            frame_type=frame.get("type"),
+            queue_size=self._queue.qsize(),
+            route_key=frame.get("routeKey"),
+            session_key=frame.get("sessionKey"),
+            text=frame.get("text") or frame.get("reply"),
+            attachments=frame.get("attachments") or [],
+        )
         try:
             self._queue.put_nowait(frame)
         except queue.Full:
+            log_push_debug("queue.full", drop_policy=self.config.drop_policy, queue_size=self._queue.qsize())
             if self.config.drop_policy == "drop_new":
                 return
             # drop_oldest: remove one and try again
@@ -75,6 +86,14 @@ class PushService:
 
     def _handle_frame(self, frame: dict) -> None:
         ftype = str(frame.get("type") or "")
+        log_push_debug(
+            "queue.handle",
+            frame_type=ftype,
+            route_key=frame.get("routeKey"),
+            session_name=frame.get("sessionName"),
+            text=frame.get("text") or frame.get("reply"),
+            attachments=frame.get("attachments") or [],
+        )
         if ftype != "push.message":
             return
         text = str(frame.get("text") or frame.get("reply") or "").strip()
@@ -91,8 +110,10 @@ class PushService:
                 audio_bytes, content_type = self.tts.synthesize_blocking(
                     TtsRequest(text=text, mode="push", provider_override=None, overrides={"mode": "push"})
                 )
+                log_push_debug("queue.tts.generated", content_type=content_type, audio_bytes=len(audio_bytes or b""))
             except Exception as exc:  # noqa: BLE001
                 print(f"[PushService] push tts failed: {exc}")
+                log_push_debug("queue.tts.failed", error=repr(exc))
 
         # Convert frame attachments into message attachment format.
         attachments: list[dict] = []
@@ -142,8 +163,18 @@ class PushService:
             "routeKey": str(frame.get("routeKey") or "").strip(),
             "sessionName": str(frame.get("sessionName") or "").strip(),
         }
+        log_push_debug(
+            "queue.payload.ready",
+            role=role,
+            meta=meta,
+            route_key=payload.get("routeKey"),
+            session_name=payload.get("sessionName"),
+            text=text,
+            attachments=attachments,
+        )
         if self.on_message:
             try:
                 self.on_message(payload)
             except Exception as exc:  # noqa: BLE001
                 print(f"[PushService] on_message hook failed: {exc}")
+                log_push_debug("queue.payload.failed", error=repr(exc))

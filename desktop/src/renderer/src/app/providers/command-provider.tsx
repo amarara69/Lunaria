@@ -56,6 +56,7 @@ import {
   getLipSyncPlaybackMode,
 } from "@/runtime/live2d-audio-utils.ts";
 import {
+  shouldFocusRealtimeSession,
   shouldSpeakRealtimeMessage,
 } from "@/runtime/speech-runtime-utils.ts";
 import {
@@ -836,6 +837,14 @@ export function RendererCommandProvider({
 
         useAppStore.getState().upsertMessageForSession(incoming.sessionId, incoming);
 
+        if (shouldFocusRealtimeSession(incoming, currentSessionRef.current)) {
+          try {
+            await loadSession(incoming.sessionId, { shouldApply });
+          } catch (error) {
+            console.warn("Failed to focus push session after realtime message:", error);
+          }
+        }
+
         if (incoming.sessionId === currentSessionRef.current) {
           const audioUrl = findFirstAudioAttachmentUrl(normalizedBackendUrl, incoming);
           if (shouldSpeakRealtimeMessage(incoming, currentSessionRef.current)) {
@@ -858,7 +867,7 @@ export function RendererCommandProvider({
         }
       },
     });
-  }, [createConnectionUpdateGuard, normalizedBackendUrl, speechPlayback]);
+  }, [createConnectionUpdateGuard, loadSession, normalizedBackendUrl, speechPlayback]);
 
   const createNewSession = useCallback(async () => {
     const created = await createSession(normalizedBackendUrl);
